@@ -1,579 +1,448 @@
 import pandas as pd 
-import numpy as np 
 
-from datetime import datetime, timedelta 
-from sklearn.linear_model import LinearRegression 
-from hurst import compute_Hc 
-from scipy import stats 
-
-import adv_machine.get_prices as gp 
 import adv_machine.utils as ut 
-from adv_machine.log import _print,_print_error    
-
-
-def ohlc_to_feature(ohlc, feature, config_feature, verbose=0):
-    _print(f"Computing feature: {feature} with config: {config_feature}", 2, verbose)
-    
-    if feature == 'average_max_return':
-        series = add_average_max_returns(ohlc, config_feature)
-    elif feature == 'beta':
-        series = add_beta(ohlc,config_feature)
-    elif feature == 'alpha':
-        series = add_alpha(ohlc,config_feature)
-    elif feature == 'average_min_return': 
-         series = add_average_min_returns(ohlc,config_feature)
-    elif feature == 'calmar_ratio':
-        series = add_calmar_ratio(ohlc, config_feature)
-    elif feature == 'close':
-        series = ohlc['close']
-    elif feature == 'cumulative_1d_volume':
-         series = ohlc['cumulative_1d_volume']
-    elif feature == 'market_cap':
-         series = ohlc['market_cap']
-    elif feature == 'distance_from_vwap':
-        series = add_distance_from_vwap(ohlc,config_feature) 
-    elif feature == 'distance_from_high':
-        series = add_distance_from_high(ohlc,config_feature)
-    elif feature == 'distance_from_low':
-        series = add_distance_from_low(ohlc,config_feature)
-    elif feature == 'distance_from_low_vol_ratio':
-        series = add_distance_from_low_vol_ratio(ohlc,config_feature)
-    elif feature == 'distance_from_ma':
-        series = add_distance_from_ma(ohlc,config_feature)
-    elif feature == 'distance_from_ewma':
-        series = add_distance_from_ewma(ohlc,config_feature)
-    elif feature == 'distance_from_ma_volume':
-        series = add_distance_from_ma_volume(ohlc,config_feature)
-    elif feature == 'excess_return':
-        series = add_excess_return(ohlc,config_feature)
-    elif feature == 'excess_return_weight_marketcap':
-        series = add_excess_return_weight_marketcap(ohlc,config_feature)
-    elif feature == 'count_excess_return':
-        series = add_count_excess_return(ohlc,config_feature)
-    elif feature == 'high':
-        series = ohlc['high'] 
-    elif feature == 'hurst': 
-        series = add_hurst(ohlc,config_feature)
-    elif feature == 'illiquid_ratio':
-        series = add_illiquid_ratio(ohlc,config_feature)
-    elif feature == 'lag_log_price':
-        series = add_lag_log_price(ohlc,config_feature)
-    elif feature == 'low':
-        series = ohlc['low']
-    elif feature == 'open':
-        series = ohlc['open']
-    elif feature == 'price_path_convexity':
-        series = add_price_path_convexity(ohlc, config_feature)
-    elif feature == 'price_volume_ratio':
-        series = add_price_volume_ratio(ohlc, config_feature)
-    elif feature == 'r':
-        series = add_r(ohlc,config_feature)
-    elif feature == 'r_adjusted_return':
-        series = add_r_adjusted_return(ohlc,config_feature)
-    elif feature == 'r_adjusted_range_position':
-        series = add_r_adjusted_range_position(ohlc,config_feature)
-    elif feature == 'range_position':
-        series = add_range_position(ohlc, config_feature)
-    elif feature == 'realized_volatility':
-        series = add_yang_zhang_volatility(ohlc, config_feature)
-    elif feature == 'return_pct':
-        series = add_returns(ohlc, config_feature)
-    elif feature == 'return_vol_ratio':
-        series = add_return_vol_ratio(ohlc, config_feature)
-    elif feature == 'skew':
-        series = add_skew(ohlc,config_feature)
-    elif feature == 'spearman':
-        series = add_spearman(ohlc,config_feature)
-    elif feature == 'spearman_adjusted_range_position':
-        series = add_spearman_adjusted_range_position(ohlc,config_feature)
-    elif feature == 'volume':
-        series = ohlc['volume'] 
-    elif feature == 'volume_imbalance':
-        series = add_volume_imbalance(ohlc,config_feature)
-    elif feature == 'volume_pct':
-        series = add_volume_pct(ohlc, config_feature)
-    elif feature == 'volume_range_position':
-        series = add_volume_range_position(ohlc, config_feature)
-    elif feature == 'distance_from_ewma_volume':
-        series = add_distance_from_ewma_volume(ohlc, config_feature)
-    elif feature == 'volume_weighted_return':
-        series = add_volume_weighted_return(ohlc, config_feature) 
-    elif feature == 'vwap':
-        series = add_vwap(ohlc,config_feature) 
-    elif feature == 'var':
-         series = add_var(ohlc,config_feature)
-    else:
-        error_msg = f'The feature {feature} is not available'
-        _print_error(error_msg)
-        raise ValueError(error_msg)
-    series = series.dropna()
-    
-    # Build feature name from config
-    result = []
-    for key, value in config_feature.items():
-        result.append(f"{key}_{value}")
-    config_feature_name = '_'.join(result)
-    
-    # Set the series name using the properly formatted string
-    series.name = f'{feature}_{config_feature_name}'
-    
-    _print(f"Successfully computed {feature} feature with shape {series.shape}", 3, verbose)
-    return series 
-
-def add_average_max_returns(ohlc, config_feature):
-    period_return = config_feature['period_return']
-    period_lookback = config_feature['period_lookback']
-    count_max = config_feature['count_max']
-    
-    # Calculate the percentage change for the specified return period
-    series_return = ohlc['close'].pct_change(period_return)
-    
-    # Calculate the rolling window of the specified lookback period
-    rolling_max = series_return.rolling(window=period_lookback)
-    
-    # Apply a function to get the mean of the top 'count_max' returns in each window
-    series = rolling_max.apply(lambda x: np.mean(np.sort(x)[-count_max:]), raw=True)
-def add_beta(ohlc, config_feature):
-    period = config_feature['period']
-    market_name = 'BTCUSDT'
-    ohlc_market = gp.get_prices(market_name, 'future', drive=False)
-    series_market_return = ohlc_market['close'].pct_change(period)
-    series_coin_return = ohlc['close'].pct_change(period)
-    df = pd.concat([series_coin_return, series_market_return], axis=1)
-    df = ut.sort_date_index(df)
-    df = df.dropna()
-    df.columns = ['coin', 'market']
-
-    # Calculate rolling beta using covariance and variance
-    series = df.rolling(period).apply(
-        lambda x: np.cov(x['coin'], x['market'])[0,1] / np.var(x['market'])
-        if len(x) > 1 else np.nan
-    )
-    
-    return series 
-def add_alpha(ohlc, config_feature):
-    period = config_feature['period']
-    market_name = 'BTCUSDT'
-    ohlc_market = gp.get_prices(market_name, 'future', drive=False)
-    series_market_return = ohlc_market['close'].pct_change(period)
-    series_coin_return = ohlc['close'].pct_change(period)
-    df = pd.concat([series_coin_return, series_market_return], axis=1)
-    df = ut.sort_date_index(df)
-    df = df.dropna()
-    df.columns = ['coin', 'market']
-
-    # Calculate rolling alpha (intercept) using mean returns and beta
-    series = df.rolling(period).apply(
-        lambda x: x['coin'].mean() - (np.cov(x['coin'], x['market'])[0,1] / np.var(x['market'])) * x['market'].mean()
-        if len(x) > 1 else np.nan
-    )
-    
-    return series 
-    
+import adv_machine.get_prices as gp 
+from adv_machine.ohlc_to_feature import ohlc_to_feature  
  
-def add_average_min_returns(ohlc, config_feature):
-    period_return = config_feature['period_return']
-    period_lookback = config_feature['period_lookback']
-    count_min = config_feature['count_min']
-    
-    # Calculate the percentage change for the specified return period
-    series_return = ohlc['close'].pct_change(period_return)
-    
-    # Calculate the rolling window of the specified lookback period
-    rolling_max = series_return.rolling(window=period_lookback)
-    
-    # Apply a function to get the mean of the top 'count_max' returns in each window
-    series = rolling_max.apply(lambda x: np.mean(np.sort(x)[:count_min]), raw=True)
-    
-    return series 
-def add_lag_log_price(ohlc,config_feature):
-    period = config_feature['period']
-    series = np.log(ohlc['close']).shift(period)
-    return series 
- 
- 
+from adv_machine.log import _print, _print_error 
 
-def add_calmar_ratio(ohlc, config_feature):
-    def calmar_ratio(window):
-        def calculate_max_drawdown(window):
-            cum_returns = (1 + window).cumprod()
-            peak = cum_returns.iloc[0]
-            max_drawdown = 0
-            for val in cum_returns:
-                if val > peak:
-                    peak = val
-                else:
-                    drawdown = (peak - val) / peak
-                    max_drawdown = max(max_drawdown, drawdown)
-            return max_drawdown
 
-        cum_returns = (1 + window).prod() - 1
-        max_drawdown = calculate_max_drawdown(window)
-        return cum_returns / max_drawdown
-    period = config_feature["period"]
-    series = ohlc.close.pct_change().rolling(period).apply(calmar_ratio)
-    return series 
-def add_illiquid_ratio(ohlc,config_feature):
-    period = config_feature['period']
-    series = np.abs(ohlc['close'].pct_change()).mean()/ohlc['cumulative_1d_volume'].rolling(period).mean()
-    return series 
 
-def add_distance_from_high(ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.close / ohlc.high.rolling(period).max() - 1
-        return series 
-def add_excess_return(ohlc,config_feature):
-     period_return= config_feature['period_return']
-     period_lookback = config_feature['period_lookback']
-     market = 'BTCUSDT'
-     series_market = gp.get_prices(market,'future',drive=False)['close']
-     series_return_market = series_market.pct_change(period_return)
-     series_return_coin = ohlc['close'].pct_change(period_return)
-     df = pd.concat([series_return_coin,series_return_market],axis=1)
-     df.columns = ['coin','market']
-     df = ut.sort_date_index(df)
-     df = df.dropna()
-     series = df['coin'] - df['market']
-     series = series.ewm(span=period_lookback)
-     return series 
-def add_excess_return_weight_marketcap(ohlc,config_feature):
-     period_return= config_feature['period_return']
-     period_lookback = config_feature['period_lookback']
-     market = 'BTCUSDT'
-     ohlc_market = gp.get_prices(market,'future',drive=False)
-     series_return_market = ohlc_market['close'].pct_change(period_return)
-     series_marketcap_market = ohlc_market['cumulative_1d_volume']
-     series_marketcap_coin = ohlc['cumulative_1d_volume']
-     series_return_coin = ohlc['close'].pct_change(period_return)
-     df = pd.concat([series_return_coin,series_return_market,series_marketcap_coin,series_marketcap_market],axis=1)
-     df.columns = ['coin','market','marketcap_coin','marketcap_market']
-     df = ut.sort_date_index(df)
-     df = df.dropna()
-     series = df['coin'] - df['market']
-     series = series * df['marketcap_coin'] / df['marketcap_market']
-     series = series.ewm(span=period_lookback)
-     return series 
+def feature_computer(configs, return_ohlc=False, verbose=0):
+    """
+    Compute features given a list of configurations.
 
-def add_count_excess_return(ohlc,config_feature):
-     period_return = config_feature['period_return']
-     period_lookback = config_feature['period_lookback']
-     market = 'BTCUSDT'
-     series_market = gp.get_prices(market,'future',drive=False)['close']
-     series_return_market = series_market.pct_change(period_return)
-     series_return_coin = ohlc['close'].pct_change(period_return)
-     df = pd.concat([series_return_coin,series_return_market],axis=1)
-     df.columns = ['coin','market']
-     df = ut.sort_date_index(df)
-     df = df.dropna()
-     series = df['coin'] - df['market']
-     series = series.rolling(period_lookback).apply(lambda x : np.sum([1 for excess_return in x if excess_return > 0])/period_lookback)
-     return series 
-      
+    Parameters
+    ----------
+    configs : list of dict
+        The configurations for the features.
+    config_freq_calculation : dict
+        The frequency configuration for the features.
+    return_ohlc : bool, optional
+        Whether to return the OHLC data along with features. Defaults to False.
+    verbose : int, optional
+        Verbosity level. Defaults to 0.
 
-def add_distance_from_ma(ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.close / ohlc.close.rolling(period).mean() - 1
-        return series
+    Returns
+    -------
+    df : pd.DataFrame or tuple
+        The dataframe with computed features, or tuple (df, labels_to_ohlc) if return_ohlc=True
+    """
+    _print('----------------- Feature Computer ft.feature_computer -------------', 2, verbose)
 
-def add_distance_from_ewma(ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.close / ohlc.close.ewm(span=period).mean() - 1
-        return series
-
-def add_distance_from_ma_volume( ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.volume / ohlc.volume.rolling(period).mean() - 1
-        return series 
-
-def add_price_path_convexity(ohlc,config_feature):
-    period = config_feature['period']
-    series = ohlc['close']
-    series = series.rolling(period).apply(lambda x : (np.mean(x) +(1/2)*(x[0]+x[-1]))/np.mean(x))
-    return series 
-
-def add_hurst(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ohlc.close.rolling(period).apply(lambda x: compute_Hc(x)[0])
-        return series 
-
-def add_price_volume_ratio(ohlc,config_feature):
-    series = ohlc['close']/ohlc['volume']
-    return series 
-def add_skew(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ohlc.close.pct_change().rolling(period).skew()
-        return series 
-
-def add_range_position(ohlc,config_feature):
-    period = config_feature["period"]
-    series = ut.add_range_position(ohlc["close"],period)
-    return series 
-
-def add_spearman(ohlc, config_feature):
-        period       = config_feature["period"]
-        series = ohlc.close.rolling(period).apply(
-            lambda x: stats.spearmanr(x.values, np.arange(period)).statistic
-        )
-        return series
-
-def add_spearman_adjusted_range_position(ohlc, config_feature):
-        period           =  config_feature["period"]
-        series           =  ohlc.close.rolling(period).apply(
-            lambda x: abs(stats.spearmanr(x.values, np.arange(period)).statistic) * np.interp(x.iloc[-1], [x.min(), x.max()], [-1, 1])
-        )
-        return series 
-
-def add_r(ohlc, config_feature):
-        period       = config_feature["period"]
-        series       = ohlc.close.rolling(period).apply(
-            lambda x: np.corrcoef(x.values, np.arange(period))[0][1]
-        )
-        return series 
-
-def add_r_adjusted_return(ohlc, config_feature):
-        period       = config_feature["period"]
-        series = ohlc.close.rolling(period).apply(
-            lambda x: abs(np.corrcoef(x.values, np.arange(period))[0][1]) * (x.iloc[-1] / x.iloc[0] - 1)
-        )
-        return series 
-
-def add_spearman_adjusted_return(ohlc, config_feature):
-        period       = config_feature["period"]
-        series       =       ohlc.close.rolling(period).apply(
-            lambda x: abs(stats.spearmanr(x.values, np.arange(period)).statistic) * (x.iloc[-1] / x.iloc[0] - 1)
-        )
-        return series 
-def add_r_adjusted_range_position(ohlc, config_feature):
-        period       = config_feature["period"]
-        series = ohlc.close.rolling(period).apply(
-            lambda x: abs(np.corrcoef(x.values, np.arange(period))[0][1]) * np.interp(x.iloc[-1], [x.min(), x.max()], [-1, 1])
-        )
-        return series 
-def add_distance_from_low(ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.close / ohlc.low.rolling(period).min() - 1
-        return series 
-
-def add_distance_from_low_vol_ratio(ohlc, config_feature):
-        period           = config_feature["period"]
-        series_low = ohlc.close / ohlc.low.rolling(period).min() - 1
-        series = series_low/series_low.rolling(period).std()
-        return series
-
-def add_return_vol_ratio(ohlc, config_feature):
-    period = config_feature["period"]
-    pct_change = ohlc.close.pct_change()
-    rolling_window = pct_change.rolling(period)
-    mean = rolling_window.mean()
-    vol = rolling_window.std()
-    series = mean / vol
-    return series
-
-def add_returns(ohlc,config_feature):
-    period = config_feature["period"]
-    series = ohlc.close.pct_change(period)
-    return series   
-
-def add_volume_weighted_return(ohlc,config_feature):
-    period = config_feature['period']
-    series_return = ohlc.close.pct_change(period=period)
-    series_volume = ohlc.cumulative_1d_volume.ewm(span=period).mean()
-    series = series_return*series_volume 
-    return series 
-
-def add_yang_zhang_volatility(ohlc,config_feature):
-    period = config_feature['period'] 
-    log_ho = (ohlc['high'] / ohlc['open']).apply(np.log)
-    log_lo = (ohlc['low'] / ohlc['open']).apply(np.log)
-    log_co = (ohlc['close'] / ohlc['open']).apply(np.log)
-    
-    log_oc = (ohlc['open'] / ohlc['close'].shift(1)).apply(np.log)
-    log_oc_sq = log_oc**2
-    
-    log_cc = (ohlc['close'] / ohlc['close'].shift(1)).apply(np.log)
-    log_cc_sq = log_cc**2
-    
-    rs = log_ho * (log_ho - log_co) + log_lo * (log_lo - log_co)
-    
-    close_vol = log_cc_sq.rolling(window=period,center=False).sum() * (1.0 / (period - 1.0))
-    open_vol = log_oc_sq.rolling(window=period,center=False).sum() * (1.0 / (period - 1.0))
-    window_rs = rs.rolling(window=period,center=False).sum() * (1.0 / (period - 1.0))
-
-    k = 0.34 / (1.34 + (period + 1) / (period - 1))
-    result = (open_vol + k * close_vol + (1 - k) * window_rs).apply(np.sqrt) * np.sqrt(365)
-
-    return result.dropna()
-def add_volume_imbalance(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ohlc.buy_volume.rolling(period).sum() / ohlc.volume.rolling(period).sum() - 0.5
-        return series 
-def add_volume_pct(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ohlc.cumulative_1d_volume.pct_change(periods=period)
-        return series 
-def add_volume_range_position(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ut.add_range_position(ohlc['cumulative_1d_volume'],period)
-        return series 
-def add_distance_from_ewma_volume(ohlc, config_feature):
-        period = config_feature["period"]
-        series = ohlc['cumulative_1d_volume'] / ohlc['cumulative_1d_volume'].ewm(span=period).mean() - 1
-        return series 
-
-def add_vwap(ohlc, config_feature):
-        period           = config_feature["period"]
-        series = ohlc.volume.rolling(period).sum() / ohlc.volume.rolling(period).sum()
-        return series
-
-def add_distance_from_vwap(ohlc, config_feature):
-        period           = config_feature["period"]
-        vwap             = (ohlc.close * ohlc.cumulative_1d_volume).rolling(period).sum() / ohlc.cumulative_1d_volume.rolling(period).sum()
-        series = ohlc.close / vwap - 1
-        return series 
-def add_var(ohlc, config_feature):
-    period = config_feature['period']
-    # Calculate rolling 5th percentile of returns
-    series = ohlc['close'].pct_change().rolling(period).quantile(0.05)
-    return series 
- 
-
-def convert_freq(input,freq,timestamps=None):
-    '''
-    The input need to have minute timestamp 
-    
-    '''
-    if freq == '1m':
-        if (timestamps is None)  :
-            df = input.copy(deep=True) 
-        elif isinstance(timestamps,list):
-            df = ut.get_some_timestamp_index(input,timestamps) 
-    elif freq == '1d':
-        if (timestamps is None) or (len(set(timestamps)) > 1 ) or (timestamps == []):
-            raise ValueError(f'gd.convert_freq. The freq is daily but timestamps {timestamps} was given')
-        else :
-            timestamp = timestamps[0]
-            df = ut.index_to_closest_timeframe_low(input,timestamp) 
-    elif freq == 'keep':
-        df = input 
-    df = ut.sort_date_index(df)
-    return df 
-
-def get_beta(ticker,market_coins,period,timestamp):
-    config_coin = ut.get_coin_config(ticker)
-    ohlc_coin = gp.get_prices(**config_coin)
-    series_coin = convert_freq(ohlc_coin['close'],'1d',timestamp)
-    series_market = get_market_return(market_coins,config_coin['trading_type'],period = '1d',timestamp=timestamp)
-    
-    df = pd.concat([series_coin,series_market],axis=1).dropna()
-    df = ut.sort_date_index(df).dropna()
-    df.columns = ['coin','market']
-    dates = []
-    beta = []
-    
-    for df_ in df.rolling(period):
-        date_ = df_.index[-1]
-        beta_ = np.corrcoef(df_['coin'].values,df_['market'].values)[0][1]
-        dates.append(date_)
-        beta.append(beta_)
-    series_beta = pd.Series(beta,index = dates)
-    
-    return series_beta 
-
-def get_iv(ticker,market_coins,period,timestamp):
-    config_coin = ut.get_coin_config(ticker)
-    ohlc_coin = gp.get_prices(**config_coin)
-    series_coin = convert_freq(ohlc_coin['close'],'1d',timestamp)
-    series_market = get_market_return(market_coins,config_coin['trading_type'],period = '1d',timestamp=timestamp)
-    
-    df = pd.concat([series_coin,series_market],axis=1).dropna()
-    df = ut.sort_date_index(df).dropna()
-    df.columns = ['coin','market']
-    dates = []
-    iv = []
-    
-    for df_ in df.rolling(period):
-        if len(df_) > period-1:
-            date_ = df_.index[-1]
-            model = LinearRegression(fit_intercept=False)
-            model.fit(df_['market'],df_['coin'])
-            pred = model.predict(df_['market'])
-            resid = df_['coin'][-1] - pred[-1]
-            iv = iv.append(resid)
-            dates.append(date_)
-    series_beta = pd.Series(iv,index = dates)
-    
-    return series_beta 
-
-def get_market_return(market_coins, trading_type,period,timestamp=None):
+    labels_to_ohlc = {}
     concat = []
-    for coin in market_coins  : 
-        ohlc = gp.get_prices(coin,trading_type)
-        series_return = ohlc['close'].copy(deep=True)
-        if 'd' in period : 
-            series_return = convert_freq(series_return,'1d',timestamp)
-        elif 'm' in period : 
-            series_return = series_return
-        else : 
-            raise ValueError(f'gd.get_market_return. period {period} not available')
-        period_ = ut.extract_integers(period)[0]
-        series_return = series_return.pct_change(period_)
-        concat.append(series_return)
-    df = pd.concat(concat,axis=1)
-    series = df.mean(axis=1).dropna()
-    return series 
 
-def get_streak(ticker,market_coins,timestamp):
-    """
-    Calculate the streak of consecutive days where the cryptocurrency outperforms
-    or underperforms the market based on daily returns.
-    
-    Parameters:
-    - crypto_returns: List or pandas Series of daily returns for the cryptocurrency.
-    - market_returns: List or pandas Series of daily returns for the market.
-    
-    Returns:
-    - streaks: List or pandas Series of streak scores.
-    """
-    # Check if inputs are pandas Series; if not, convert them to Series
-    config_coin = ut.get_coin_config(ticker)
-    series_coin_return = gp.get_prices(**config_coin)
-    series_coin_return = convert_freq(series_coin_return,'1d',timestamp)
-    series_market_return = get_market_return(market_coins,config_coin['trading_type'],period=1,timestamp=timestamp)
+    for config in configs:
+        feature, config_feature = ut.flatten(config)
+        _print(f'Computing feature {feature}', 1, verbose)
+        try:
+            # Get OHLC data
+            config_feature_calculation = config_feature['feature']
+            config_collect = config_feature['collect']
+            
+            product = config_collect['product']
 
-    df = pd.concat([series_coin_return,series_market_return],axis=1)
-    df.columns = ['coin','market']
+
+
+
+            # Get or fetch OHLC data
+            if product in labels_to_ohlc:
+                _print(f'Found cached OHLC data for {product}', 2, verbose)
+                ohlc = labels_to_ohlc[product]
+                _print(f'Cached OHLC data shape: {ohlc.shape if hasattr(ohlc, "shape") else len(ohlc)}', 2, verbose)
+            else:
+                _print(f'No cached data found for {product}, fetching new data...', 2, verbose)
+                try:
+                    ohlc = gp.get_stock_ohlc(product)
+                    
+                    _print(f'Successfully fetched data with shape: {ohlc.shape if hasattr(ohlc, "shape") else len(ohlc)}', 2, verbose)
+                    
+                    labels_to_ohlc[product] = ohlc
+                except Exception as e:
+                    _print_error(f'Error fetching price data: {str(e)}')
+                    raise ValueError(f'Failed to get price data for {product} : {str(e)}')
+
+            _print(f'Obtained data for product {product} with {len(ohlc)} entries.', 2, verbose)
+
+
+
+            
+
+            series = ohlc_to_feature(ohlc, feature, config_feature_calculation)
+            series = series.dropna()
+            _print(f'Computed feature {feature} with {len(series)} entries.', 1, verbose)
+
+            # Add transformations and normalization
+            series.name = ut.get_name_config(config)
+            series = add_transformation(series, config_feature)
+            series = add_normalization(series, config_feature)
+            _print(f'Applied transformations to feature {feature}.', 2, verbose)
+
+            if not series.empty:
+                # Add lag if specified
+                if 'lag' not in config_feature:
+                    concat.append(series)
+                else:
+                    for lag in config_feature['lag']:
+                        series_lag = series.shift(lag)
+                        series_lag.name = f'{series.name}_lag_{lag}'
+                        concat.append(series_lag)
+                        _print(f'Added lag {lag} to feature {feature}.', 2, verbose)
+            else:
+                concat.append(pd.Series(name=series.name))
+
+        except Exception as e:
+            _print_error(e)
+            raise ValueError(f'Feature {feature} not available in get_data.')
+
+    _print('All features have been added to the dataframe.', 1, verbose)
+
+    df = pd.concat(concat, axis=1)
     df = ut.sort_date_index(df)
     df = df.dropna()
+    
+    if return_ohlc:
+        return df, labels_to_ohlc
+    else:
+        return df 
+    
+def add_transformation(series, config_feature):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is specified in the configuration as a dictionary
+    with the transformation name as the key and the configuration for the
+    transformation as the value.
 
-    # Initialize the streaks list
-    streaks = [0]  # The first day has no streak, so it is 0
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_feature : dict
+        The configuration for the feature
+        It should contain the following keys:
+            transformation : dict
+                The dictionary of transformations to apply
+                Each key is the name of the transformation and the value is the configuration for the transformation
 
-    # Initialize the current streak
-    current_streak = 0
-    crypto_returns = df['coin']
-    market_returns = df['market']
-    dates = []
+    Returns
+    -------
+    pandas Series
+        The series with the specified transformation applied
+    """
+    transformation = config_feature.get('transformation',None)
+    if transformation is None : 
+        return series
+    if series.empty:
+        return series
+    for transformation_name, config_transformation in transformation.items():
+        if transformation_name == 'cross_moving_average':
+            series = add_crossing_moving_average(series,config_transformation) 
+        elif transformation_name == 'pct': 
+            series = add_pct_variation(series,config_transformation) 
+        elif transformation_name == 'distance_to_high':
+            series = add_distance_to_high(series,config_transformation)
+        elif transformation_name == 'distance_to_low':
+            series = add_distance_to_low(series,config_transformation) 
+        elif transformation_name == 'average':
+            series = add_average(series,config_transformation)
+        elif transformation_name == 'distance_from_average':
+            series = add_distance_from_average(series,config_transformation)
+        elif transformation_name == 'vol_ratio':
+            series = add_vol_ratio(series,config_transformation)
+        elif transformation_name == 'max':
+            series = add_max(series,config_transformation)
+        elif transformation_name == 'min':
+            series = add_min(series,config_transformation) 
+        elif transformation_name == 'range_position': 
+            series = add_range_position_period(series,config_transformation)
+        elif transformation_name == 'z_score':
+            series = add_z_score(series,config_transformation) 
+        else : 
+            raise ValueError(f'The transofromation {transformation_name} not available')
+    series.name = f'{series.name}_{transformation_name}'
+    return series 
 
-    # Loop through the returns from the first day onward
-    for i in range(len(df)):
-        if crypto_returns[i] > market_returns[i]:  # Crypto outperforms the market
-            if current_streak >= 0:
-                current_streak += 1  # Continue the winning streak
-            else:
-                current_streak = 1  # Reset to a new winning streak
-        elif crypto_returns[i] < market_returns[i]:  # Crypto underperforms the market
-            if current_streak <= 0:
-                current_streak -= 1  # Continue the losing streak
-            else:
-                current_streak = -1  # Reset to a new losing streak
-        else:
-            current_streak = 0  # No streak if returns are equal
+def add_distance_from_average(series,config_transformation):
+    period = config_transformation['period']
+    series = series.sub(ut.get_moving_average(series,period,'MA'))
+    return series 
+def add_vol_ratio(series,config_transformation):
+    period = config_transformation['period']
+    series = series.div(series.rolling(period).std())
+    return series 
+def add_range_position_period(series,config_transformation):
+    period = config_transformation['period']
+    series = ut.add_range_position(series,period) 
+    return series  
+def add_max(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified maximum applied.
+    The maximum is calculated over a rolling window of the specified period.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the maximum to
+    config_transformation : dict
+        The configuration for the feature
+        It should contain the following keys:
+            period : int
+                The period to calculate the maximum over
+
+    Returns
+    -------
+    pandas Series
+        The series with the maximum applied
+    """
+    period = config_transformation['period']
+    series = series.rolling(period).max()
+    return series 
+def add_min(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified minimum applied.
+    The minimum is calculated over a rolling window of the specified period.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the minimum to
+    config_transformation : dict
+        The configuration for the transformation
+        It should contain the following keys:
+            period : int
+                The period to calculate the minimum over
+
+    Returns
+    -------
+    pandas Series
+        The series with the minimum applied
+    """
+    period = config_transformation['period']
+    series = series.rolling(period).min()
+    return series 
+def add_z_score(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified minimum applied.
+    The minimum is calculated over a rolling window of the specified period.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the minimum to
+    config_transformation : dict
+        The configuration for the transformation
+        It should contain the following keys:
+            period : int
+                The period to calculate the minimum over
+
+    Returns
+    -------
+    pandas Series
+        The series with the minimum applied
+    """
+    period = config_transformation['period']
+    series_rolling = series.rolling(period)
+    series = (series - series_rolling.mean())/series_rolling.std()
+    return series
+def add_normalization(series, config_feature):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified normalization applied.
+    The normalization is either the z-score or None.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the normalization to
+    config_feature : dict
+        The configuration for the feature
+        It should contain the following keys:
+            normalization : dict
+                The configuration for the normalization
+                It should contain the following keys:
+                    method : str
+                        The method to use for the normalization
+                        It can be either 'z_score' or None
+                    period : int
+                        The period to use for the normalization
+                        It is required if the method is 'z_score'
+
+    Returns
+    -------
+    pandas Series
+        The normalized Series
+    """
+    config_normalization = config_feature.get('normalization',None)
+    if config_normalization is None : 
+        # If there is no normalization, return the original series
+        return series 
+    if series.empty : 
+        return series 
+    else : 
+        # If there is normalization, extract the method and period
+        method = config_normalization['method']
+        if method == 'z_score':
+            # If the method is z_score, calculate the z_score
+            return ut.z_score(series,config_normalization['period'])
+        else : 
+            # If the method is not z_score, raise a ValueError
+            raise ValueError(f'ft.add_normalization. The method {method} not available')
+def add_pct_variation(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is the percentage change.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_transformation : dict
+        The configuration for the transformation
+        It should contain the following keys:
+            period : int
+                The period of the percentage change
+
+    Returns
+    -------
+    pandas Series
+        The transformed Series
+    """
+    period = config_transformation['period']
+    series = series.pct_change(period)
+    return series
+def add_average(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is the moving average.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_transformation : dict
+        The configuration for the feature
+        It should contain the following keys:
+            period : int
+                The period of the moving average
+            method : str
+                The method to use for the moving average
+                It can be either 'MA' for the mean or 'EWM' for the exponentially weighted mean
+    """
+    period = config_transformation['period']
+    method = config_transformation['method']
+    # Calculate the moving average using the mean or exponentially weighted mean
+    series = ut.get_moving_average(series, period, method)
+    return series
+def add_distance_to_high(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is the distance to the high.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_transformation : dict
+        The configuration for the transformation
+        It should contain the following keys:
+            period : int
+                The period to calculate the high
+
+    Returns
+    -------
+    pandas Series
+        The transformed Series
+    """
+    period = config_transformation['period']
+    # Calculate the high
+    series_high = series.rolling(period).max()
+    # Calculate the distance to the high
+    series = series.div(series_high) 
+    return series 
+def add_distance_to_low(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is the distance to the low.
+
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_transformation : dict
+        The configuration for the feature
+        It should contain the following keys:
+            period : int
+                The period to calculate the low
+
+    Returns
+    -------
+    pandas Series
+        The transformed Series
+    """
+    period = config_transformation['period']
+    series_low = series.rolling(period).min()
+    series = series.div(series_low)
+    return series
+def add_crossing_moving_average(series, config_transformation):
+    """
+    This function takes a pandas Series and a configuration for a feature
+    and returns a new Series with the specified transformation applied.
+    The transformation is a crossing moving average.
+    
+    Parameters
+    ----------
+    series : pandas Series
+        The series to apply the transformation to
+    config_feature : dict
+        The configuration for the feature
+        It should contain the following keys:
+            means : list
+                The list of means to use for the moving average
+            method : str
+                The method to use for the moving average
+                It can be either 'MA' or 'EWM'
+    
+    Returns
+    -------
+    pandas Series
+        The transformed Series
+    """
+    
+    # Get the list of means from the configuration
+    means = config_transformation['means']
+    
+    # Get the method to use for the moving average from the configuration
+    method = config_transformation['method']
+    
+    # If there is only one mean, subtract the moving average from the series
+    if len(means) == 1:
+        series -= ut.get_moving_average(series, means[0], method)
         
-        # Append the current streak to the streaks list
-        date = df.index[i]
-        dates.append(date)
-        streaks.append(current_streak)
-
-    return pd.Series(streaks,index = dates)    
-
- 
+    # If there are two means, subtract the long moving average from the short moving average
+    elif len(means) == 2:
+        # Get the short and long means
+        short_mean = min(means)
+        long_mean = max(means)
+        
+        # Calculate the short and long moving averages
+        short_moving_average = ut.get_moving_average(series, short_mean, method)
+        long_moving_average = ut.get_moving_average(series, long_mean, method)
+        
+        # Subtract the long moving average from the short moving average
+        series = short_moving_average - long_moving_average
+        
+    # If there are more than two means, raise a ValueError
+    else:
+        raise ValueError(f'There is no crossing moving average with means {means}')
+        
+    # Return the transformed Series
+    return series

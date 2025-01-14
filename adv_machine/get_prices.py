@@ -1,7 +1,7 @@
 import yfinance as yf
 import pandas as pd
 
-def get_stock_ohlc(stock_name: str, start_date: str, end_date: str) -> pd.DataFrame:
+def get_stock_ohlc(stock_name: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
     """
     Retrieve OHLC and volume data for a stock using Yahoo Finance.
 
@@ -14,8 +14,15 @@ def get_stock_ohlc(stock_name: str, start_date: str, end_date: str) -> pd.DataFr
         pd.DataFrame: A DataFrame containing OHLC and volume data with a datetime index.
     """
     try:
-        stock_data = yf.download(stock_name, start=start_date, end=end_date)
+        # Add progress=False to avoid multi-level columns
+        stock_data = yf.download(stock_name, start=start_date, end=end_date, progress=False)
+        
+        # If we still get multi-level columns, flatten them
+        if isinstance(stock_data.columns, pd.MultiIndex):
+            stock_data.columns = stock_data.columns.get_level_values(0)
+            
         ohlc_data = stock_data[['Open', 'High', 'Low', 'Close', 'Volume']]
+        ohlc_data.columns = ['open', 'high', 'low', 'close', 'volume']
         ohlc_data.index = pd.to_datetime(ohlc_data.index)
         return ohlc_data
     except Exception as e:

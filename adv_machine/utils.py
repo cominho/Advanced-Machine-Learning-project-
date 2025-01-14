@@ -218,6 +218,9 @@ def extract_integers(input_string):
     integers = [int(num) for num in integer_strings]
     
     return integers  
+def format_datetime(input_date):
+    # Set the time components to zero to keep only the date part
+    return input_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def get_moving_average(series, period, method):
@@ -292,6 +295,63 @@ def adjust_datetime(x):
             return x 
 
 
+def get_name_config(config, exclude_keys=None):
+    if not config:
+        return ''
+    if exclude_keys is None:
+        exclude_keys = ['product']  # Exclude 'product' by default
+
+    # Extract the main key from the config dictionary
+    main_key = list(config.keys())[0]
+
+    # Initialize parts list with main key
+    parts = [main_key]
+
+    # Extract the sub-dictionary
+    config_main = config[main_key]
+
+    # This function extracts parts in the specified order
+    def extract_parts(config_section):
+        parts = []
+
+        # Process 'transformation' section if it exists
+        if 'transformation' in config_section:
+            for trans_key, trans_value in config_section['transformation'].items():
+                parts.append(trans_key)
+                for key, value in trans_value.items():
+                    if key in exclude_keys:
+                        continue
+                    if isinstance(value, str):
+                        parts.append(f"{key}_{value}")
+                    else:
+                        parts.append(f"{key}{value}")
+
+        # Process 'feature' section if it exists
+        if 'feature' in config_section:
+            for key, value in config_section['feature'].items():
+                if key in exclude_keys:
+                    continue
+                if isinstance(value, str):
+                    parts.append(f"{key}_{value}")
+                else:
+                    parts.append(f"{key}{value}")
+
+        # Process 'collect' section if it exists
+        if 'collect' in config_section:
+            collect_section = config_section['collect']
+            # Add 'type' value directly
+            if 'type' in collect_section and 'type' not in exclude_keys:
+                parts.append(collect_section['type'])
+        return parts
+
+    sub_parts = extract_parts(config_main)
+    parts.extend(sub_parts)
+
+    # Join parts with underscores
+    name = "_".join(parts)
+    return name
+
+
 
 def get_target_name(df):
     for feature in df.columns : 
@@ -300,41 +360,6 @@ def get_target_name(df):
     raise ValueError(f'utils.get_target_name() . target name not found in dataframe. Columns of the dataframe {df.columns}') 
 
 
-def mark_top_X(df, top, reverse=False):
-    """
-    Modify the DataFrame such that for each row, values in the top or bottom X columns are marked as 1,
-    and others as 0. If top is None, return a DataFrame where each value is 1 if it is not NaN,
-    and 0 otherwise.
-
-    Args:
-        df (pd.DataFrame): Input DataFrame.
-        top (int or None): Number of top/bottom values to consider in each row. If None, mark all non-NaN values as 1.
-        reverse (bool): If False, mark the top X values. If True, mark the bottom X values.
-
-    Returns:
-        pd.DataFrame: DataFrame where values are 1 if they are among the top/bottom X in their row, else 0.
-    """
-
-    if top is None:
-        return df.applymap(lambda x: 0 if pd.isna(x) else 1)
-
-    # Rank the DataFrame
-    df_ranked = df.rank(axis=1, ascending=False)
-
-    if not reverse:
-        # Mark top X values with 1
-        result = df_ranked.applymap(lambda x: 0 if pd.isna(x) else (1 if x <= top else 0))
-    else:
-        # Calculate the number of non-NaN columns for each row
-        counts = df.notna().sum(axis=1)
-
-        # Mark bottom X values with 1
-        def mark_bottom(row, count):
-            return row.apply(lambda x: 0 if pd.isna(x) else (1 if x >= count - top + 1 else 0))
-
-        result = df_ranked.apply(lambda row: mark_bottom(row, counts[row.name]), axis=1)
-
-    return result
 
 
 
