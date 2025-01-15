@@ -53,6 +53,7 @@ class Universe():
        
     def compute_universe(self,end_date,start_date='2005-01-01'):
         # Try to load existing universe from JSON first
+        os.makedirs('universe',exist_ok=True)
         top = self.config_universe['top']
 
         json_path = f'universe/rolling_universe_{self.baseline_universe}.json'
