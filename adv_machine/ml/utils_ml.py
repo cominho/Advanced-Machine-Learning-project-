@@ -88,6 +88,10 @@ def evaluate_params(args):
     model = model(**params)
     first_date = list(date_to_product_universe.keys())[0]
     _print(f"Starting from first date: {first_date}", 1, verbose)
+
+
+    product_to_df_features = {product: df_feature[df_feature.index >= first_date] for product, df_feature in product_to_df_features.items() if product in products}
+    product_to_target = {product: target[target.index >= first_date] for product, target in product_to_target.items() if product in products}
     
     # Create combined DataFrames for features and targets separately
     features_df = pd.concat(product_to_df_features.values(), keys=product_to_df_features.keys(), axis=1)

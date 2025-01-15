@@ -1,0 +1,14 @@
+pandas
+numpy
+plotly
+tqdm
+statsmodels
+scikit-learn
+matplotlib
+seaborn 
+hurst 
+openpyxl  
+pyarrow 
+xgboost 
+optuna 
+torch 
