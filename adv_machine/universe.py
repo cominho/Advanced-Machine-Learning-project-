@@ -51,7 +51,7 @@ class Universe():
         self.n_jobs = n_jobs
         self.verbose = verbose 
        
-    def compute_universe(self,end_date):
+    def compute_universe(self,end_date,start_date='2005-01-01'):
         # Try to load existing universe from JSON first
         top = self.config_universe['top']
 
@@ -74,9 +74,10 @@ class Universe():
                 for date, product_to_value in date_to_product_values.items()
             }
             last_date = list(date_to_product_values.keys())[-1]
+            start_date_datetime = ut.format_datetime(pd.to_datetime(start_date))
             if last_date >= end_date_datetime :
                 _print(f'Universe already computed for {end_date}', 1, self.verbose)
-                date_to_product_values = {date : product_to_value for date, product_to_value in date_to_product_values.items() if date <= end_date_datetime}
+                date_to_product_values = {date : product_to_value for date, product_to_value in date_to_product_values.items() if date <= end_date_datetime and date >= start_date_datetime}
                 date_to_product_universe = mark_top_rank(date_to_product_values,top,verbose = self.verbose) 
 
                 all_products = set()
@@ -169,7 +170,8 @@ class Universe():
         
 
         _print(f'Computing top {top} products for each date', 1, self.verbose)
-        date_to_product_values = {date : product_to_value for date, product_to_value in date_to_product_values.items() if date <= end_date_datetime}
+        start_date_datetime = ut.format_datetime(pd.to_datetime(start_date))
+        date_to_product_values = {date : product_to_value for date, product_to_value in date_to_product_values.items() if date <= end_date_datetime and date >= start_date_datetime}
         date_to_product_universe = mark_top_rank(date_to_product_values,top,verbose = self.verbose)
         
         all_products = set()
