@@ -26,8 +26,8 @@ def ohlc_to_feature(ohlc, feature, config_feature, verbose=0):
         series = add_calmar_ratio(ohlc, config_feature)
     elif feature == 'close':
         series = ohlc['close']
-    elif feature == 'cumulative_1d_volume':
-         series = ohlc['cumulative_1d_volume']
+    elif feature == 'volume':
+         series = ohlc['volume']
     elif feature == 'market_cap':
          series = ohlc['market_cap']
     elif feature == 'distance_from_vwap':
@@ -135,8 +135,8 @@ def add_average_max_returns(ohlc, config_feature):
     series = rolling_max.apply(lambda x: np.mean(np.sort(x)[-count_max:]), raw=True)
 def add_beta(ohlc, config_feature):
     period = config_feature['period']
-    market_name = 'BTCUSDT'
-    ohlc_market = gp.get_prices(market_name, 'future', drive=False)
+    market_name = '^GSPC'
+    ohlc_market = gp.get_stock_ohlc(market_name)
     series_market_return = ohlc_market['close'].pct_change(period)
     series_coin_return = ohlc['close'].pct_change(period)
     df = pd.concat([series_coin_return, series_market_return], axis=1)
@@ -153,8 +153,8 @@ def add_beta(ohlc, config_feature):
     return series 
 def add_alpha(ohlc, config_feature):
     period = config_feature['period']
-    market_name = 'BTCUSDT'
-    ohlc_market = gp.get_prices(market_name, 'future', drive=False)
+    market_name = '^GSPC'
+    ohlc_market = gp.get_stock_ohlc(market_name)
     series_market_return = ohlc_market['close'].pct_change(period)
     series_coin_return = ohlc['close'].pct_change(period)
     df = pd.concat([series_coin_return, series_market_return], axis=1)
@@ -215,7 +215,7 @@ def add_calmar_ratio(ohlc, config_feature):
     return series 
 def add_illiquid_ratio(ohlc,config_feature):
     period = config_feature['period']
-    series = np.abs(ohlc['close'].pct_change()).mean()/ohlc['cumulative_1d_volume'].rolling(period).mean()
+    series = np.abs(ohlc['close'].pct_change()).mean()/ohlc['volume'].rolling(period).mean()
     return series 
 
 def add_distance_from_high(ohlc, config_feature):
@@ -242,8 +242,8 @@ def add_excess_return_weight_marketcap(ohlc,config_feature):
      market = 'BTCUSDT'
      ohlc_market = gp.get_prices(market,'future',drive=False)
      series_return_market = ohlc_market['close'].pct_change(period_return)
-     series_marketcap_market = ohlc_market['cumulative_1d_volume']
-     series_marketcap_coin = ohlc['cumulative_1d_volume']
+     series_marketcap_market = ohlc_market['volume']
+     series_marketcap_coin = ohlc['volume']
      series_return_coin = ohlc['close'].pct_change(period_return)
      df = pd.concat([series_return_coin,series_return_market,series_marketcap_coin,series_marketcap_market],axis=1)
      df.columns = ['coin','market','marketcap_coin','marketcap_market']
@@ -377,7 +377,7 @@ def add_returns(ohlc,config_feature):
 def add_volume_weighted_return(ohlc,config_feature):
     period = config_feature['period']
     series_return = ohlc.close.pct_change(period=period)
-    series_volume = ohlc.cumulative_1d_volume.ewm(span=period).mean()
+    series_volume = ohlc.volume.ewm(span=period).mean()
     series = series_return*series_volume 
     return series 
 
@@ -409,15 +409,15 @@ def add_volume_imbalance(ohlc, config_feature):
         return series 
 def add_volume_pct(ohlc, config_feature):
         period = config_feature["period"]
-        series = ohlc.cumulative_1d_volume.pct_change(periods=period)
+        series = ohlc.volume.pct_change(periods=period)
         return series 
 def add_volume_range_position(ohlc, config_feature):
         period = config_feature["period"]
-        series = ut.add_range_position(ohlc['cumulative_1d_volume'],period)
+        series = ut.add_range_position(ohlc['volume'],period)
         return series 
 def add_distance_from_ewma_volume(ohlc, config_feature):
         period = config_feature["period"]
-        series = ohlc['cumulative_1d_volume'] / ohlc['cumulative_1d_volume'].ewm(span=period).mean() - 1
+        series = ohlc['volume'] / ohlc['volume'].ewm(span=period).mean() - 1
         return series 
 
 def add_vwap(ohlc, config_feature):
@@ -427,7 +427,7 @@ def add_vwap(ohlc, config_feature):
 
 def add_distance_from_vwap(ohlc, config_feature):
         period           = config_feature["period"]
-        vwap             = (ohlc.close * ohlc.cumulative_1d_volume).rolling(period).sum() / ohlc.cumulative_1d_volume.rolling(period).sum()
+        vwap             = (ohlc.close * ohlc.volume).rolling(period).sum() / ohlc.volume.rolling(period).sum()
         series = ohlc.close / vwap - 1
         return series 
 def add_var(ohlc, config_feature):

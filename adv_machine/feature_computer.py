@@ -1,4 +1,5 @@
 import pandas as pd 
+import numpy as np 
 
 import adv_machine.utils as ut 
 import adv_machine.get_prices as gp 
@@ -49,7 +50,7 @@ def feature_computer(configs, return_ohlc=False, verbose=0):
             # Get or fetch OHLC data
             if product in labels_to_ohlc:
                 _print(f'Found cached OHLC data for {product}', 2, verbose)
-                ohlc = labels_to_ohlc[product]
+                ohlc = labels_to_ohlc[product].copy(deep=True)
                 _print(f'Cached OHLC data shape: {ohlc.shape if hasattr(ohlc, "shape") else len(ohlc)}', 2, verbose)
             else:
                 _print(f'No cached data found for {product}, fetching new data...', 2, verbose)
@@ -58,7 +59,7 @@ def feature_computer(configs, return_ohlc=False, verbose=0):
                     
                     _print(f'Successfully fetched data with shape: {ohlc.shape if hasattr(ohlc, "shape") else len(ohlc)}', 2, verbose)
                     
-                    labels_to_ohlc[product] = ohlc
+                    labels_to_ohlc[product] = ohlc.copy(deep=True)
                 except Exception as e:
                     _print_error(f'Error fetching price data: {str(e)}')
                     raise ValueError(f'Failed to get price data for {product} : {str(e)}')
@@ -106,6 +107,92 @@ def feature_computer(configs, return_ohlc=False, verbose=0):
         return df, labels_to_ohlc
     else:
         return df 
+    
+def score_to_aggregation(date_to_product_score, method_aggregation, config_aggregation={},product_to_last_date={}):
+    """
+    This function takes a dictionary where the key is a date and the value is another dictionary
+    with the product names as keys and their corresponding scores as values. The function returns
+    a new dictionary with the same structure but with the scores converted to signals.
+
+    Parameters
+    ----------
+    date_to_product_score : dict
+        A dictionary where the key is a date and the value is another dictionary with the product
+        names as keys and their corresponding scores as values.
+
+    method_aggregation : str
+        The method to use to convert the scores to signals. Can be 'sign', 'sign_neg',
+        'bottom_top', 'bottom_top_decile', 'long_quantile', or 'repartion_feature'.
+
+    config_aggregation : dict
+        A dictionary with the configuration for the aggregation method.
+
+    Returns
+    -------
+    date_to_product_signal : dict
+        A dictionary with the same structure as the input but with the scores converted to signals.
+    """
+
+    date_to_product_signal = {}
+    dates = list(date_to_product_score.values())
+    last_date = dates[-1]
+    risky_dates = list(product_to_last_date.values())
+    for date, product_to_score in date_to_product_score.items():
+        date_without_time = ut.format_datetime(date)
+        product_to_score_ = {product : score for product, score in product_to_score.items() if not pd.isna(score)}
+        if method_aggregation == 'sign':
+            # Convert the scores to signals by taking the sign
+            product_to_signal = {product: np.sign(score) for product, score in product_to_score_.items()}
+        elif method_aggregation == 'sign_neg':
+            # Convert the scores to signals by taking the negative sign
+            product_to_signal = {product: -np.sign(score) for product, score in product_to_score_.items()}
+        elif method_aggregation == 'bottom_top':
+            # Convert the scores to signals by taking the top and bottom products
+            bottom = config_aggregation['bottom']
+            top = config_aggregation['top']
+            reverse = config_aggregation.get('reverse',False)
+            product_to_signal = ut.bottom_top_products(product_to_score_, top, bottom,reverse=reverse)
+        
+        else:
+            raise ValueError(f"Method aggregation '{method_aggregation}' not recognized.")
+        
+        if date == last_date : 
+            product_to_signal = {product : 0 for product in product_to_score_.keys()}
+        if date_without_time in risky_dates : 
+            risky_products = [product for product, product_date in product_to_last_date.items() if product_date == date_without_time]
+            print(f'{date_without_time} with products{risky_products}')
+            for product in risky_products : 
+                product_to_signal[product] = 0
+        date_to_product_signal[date] = product_to_signal 
+
+    # Convert dates to string format for JSON serialization
+    json_compatible_signals = {}
+    json_compatible_scores = {}
+
+    for date, product_scores in date_to_product_score.items():
+        json_compatible_scores[date.strftime('%Y-%m-%d %H:%M:%S')] = ut.make_serializable(product_scores)
+
+    for date, product_signals in date_to_product_signal.items():
+        json_compatible_signals[date.strftime('%Y-%m-%d %H:%M:%S')] = ut.make_serializable(product_signals)
+    
+    # Save to JSON files in output directory
+    import json
+    import os
+    
+    output_dir = 'output'
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save signals
+    signals_path = os.path.join(output_dir, 'aggregation_signals.json')
+    with open(signals_path, 'w') as f:
+        json.dump(json_compatible_signals, f, indent=4)
+
+    # Save scores
+    scores_path = os.path.join(output_dir, 'aggregation_scores.json')
+    with open(scores_path, 'w') as f:
+        json.dump(json_compatible_scores, f, indent=4)
+
+    return date_to_product_signal
     
 def add_transformation(series, config_feature):
     """

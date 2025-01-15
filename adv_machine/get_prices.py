@@ -24,6 +24,15 @@ def get_stock_ohlc(stock_name: str, start_date: str = None, end_date: str = None
         ohlc_data = stock_data[['Open', 'High', 'Low', 'Close', 'Volume']]
         ohlc_data.columns = ['open', 'high', 'low', 'close', 'volume']
         ohlc_data.index = pd.to_datetime(ohlc_data.index)
+        
+        # Find the first non-zero volume index
+        first_valid_volume = ohlc_data[ohlc_data['volume'] > 0].index[0]
+        first_valid_price = ohlc_data[ohlc_data['close'] > 0].index[0]
+        first_valid_idx = max(first_valid_volume,first_valid_price)
+        
+        # Trim the DataFrame to start from first non-zero volume
+        ohlc_data = ohlc_data[first_valid_idx:]
+        
         return ohlc_data
     except Exception as e:
         print(f"An error occurred: {e}")

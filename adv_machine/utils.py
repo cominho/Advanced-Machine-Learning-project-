@@ -151,44 +151,6 @@ def flatten(dict):
 
 
 
-def long_quantile(product_scores, quantile):
-    """
-    Classifies products based on their scores being in the specified quantile.
-
-    Args:
-        product_scores (dict): Dictionary where keys are product names and values are scores.
-        quantile (int): The quantile to classify products into (1 for the first quantile, 2 for the second, ..., 5 for the fifth quantile).
-
-    Returns:
-        dict: Dictionary with product names as keys and 1 if in the specified quantile, 0 otherwise.
-    """
-    if quantile < 1 or quantile > 5:
-        raise ValueError("Quantile must be between 1 and 5")
-
-    # Extract the scores and product names
-    products = list(product_scores.keys())
-    scores = np.array(list(product_scores.values()))
-
-    # Calculate the quantile boundaries
-    quantile_boundaries = np.percentile(scores, [20, 40, 60, 80, 100])
-
-    # Classify each product based on the quantile
-    classified_products = {}
-    for product, score in product_scores.items():
-        if quantile == 1 and score <= quantile_boundaries[0]:
-            classified_products[product] = 1
-        elif quantile == 2 and quantile_boundaries[0] < score <= quantile_boundaries[1]:
-            classified_products[product] = 1
-        elif quantile == 3 and quantile_boundaries[1] < score <= quantile_boundaries[2]:
-            classified_products[product] = 1
-        elif quantile == 4 and quantile_boundaries[2] < score <= quantile_boundaries[3]:
-            classified_products[product] = 1
-        elif quantile == 5 and quantile_boundaries[3] < score <= quantile_boundaries[4]:
-            classified_products[product] = 1
-        else:
-            classified_products[product] = 0
-
-    return classified_products 
 
 def get_root_directory():
     """
@@ -360,7 +322,11 @@ def get_target_name(df):
     raise ValueError(f'utils.get_target_name() . target name not found in dataframe. Columns of the dataframe {df.columns}') 
 
 
-
+def add_range_position(series,period):
+        range_position = series.copy(deep=True).rolling(period).apply(
+            lambda x: np.interp(x.iloc[-1], [x.min(), x.max()], [-1, 1])
+        )
+        return range_position 
 
 
 

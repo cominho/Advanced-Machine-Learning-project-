@@ -32,19 +32,22 @@ def compute_features(products_chunk, config_features):
                 configs.append(config_copy)
                 
             df_feature = ft.feature_computer(configs, verbose=3)
-            series_feature = df_feature.mean(axis=1)
-            series_feature.name = product
-            results.append(series_feature)
+            if df_feature.empty : 
+                continue 
+            else : 
+                series_feature = df_feature.mean(axis=1)
+                series_feature.name = product
+                results.append(series_feature)
         except Exception as e:
             print(f"Error processing {product}: {str(e)}")
             continue
     return results
 
 class Universe():
-    def __init__(self,baseline_universe, config_features,n_jobs=-1,verbose=0):
+    def __init__(self,baseline_universe, config_universe,n_jobs=-1,verbose=0):
         self.products = get_baseline_universe(baseline_universe)
         self.baseline_universe = baseline_universe  
-        self.config_features = config_features 
+        self.config_universe = config_universe 
         self.n_jobs = n_jobs
         self.verbose = verbose 
        
@@ -241,6 +244,8 @@ def mark_top_rank(date_to_product_values, top, verbose=0):
 def get_baseline_universe(baseline_universe):
     if baseline_universe == 'available_stock':
         baseline_universe = cf.available_stocks 
+    elif baseline_universe == 'us_stock':
+        baseline_universe = cf.us_stock 
     else : 
         raise ValueError(f"Invalid baseline universe type: {type(baseline_universe)}")
     return baseline_universe
