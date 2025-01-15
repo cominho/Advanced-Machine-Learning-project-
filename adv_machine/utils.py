@@ -79,6 +79,62 @@ def dataframe_to_dict(df: pd.DataFrame) -> dict:
         result[index] = row.to_dict()
     
     return result 
+
+def make_serializable(obj):
+    """
+    Convert various Python objects into JSON-serializable objects.
+    
+    Handles:
+    - numpy floats and ints
+    - numpy arrays
+    - lists and tuples
+    - dictionaries
+    - pandas Timestamps
+    - datetime objects
+    - None values
+    
+    Parameters
+    ----------
+    obj : any
+        The object to make serializable
+        
+    Returns
+    -------
+    any
+        A JSON-serializable version of the input object
+    """
+    # Handle None
+    if obj is None:
+        return None
+        
+    # Handle numpy numeric types
+    if isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    if isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+        
+    # Handle numpy arrays
+    if isinstance(obj, np.ndarray):
+        return [make_serializable(x) for x in obj.tolist()]
+        
+    # Handle lists and tuples
+    if isinstance(obj, (list, tuple)):
+        return [make_serializable(x) for x in obj]
+        
+    # Handle dictionaries
+    if isinstance(obj, dict):
+        return {str(k): make_serializable(v) for k, v in obj.items()}
+        
+    # Handle pandas Timestamp and datetime objects
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.strftime('%Y-%m-%d %H:%M:%S')
+        
+    # Handle special cases for validation_ml.py
+    try:
+        # Try to convert to native Python type if possible
+        return obj.item() if hasattr(obj, 'item') else obj
+    except:
+        return str(obj)
 def bottom_top_products(scores, top, bottom, reverse=False):
     # Sort the products by score in descending order for top products
     sorted_by_score_desc = sorted(scores.items(), key=lambda x: x[1], reverse=True)

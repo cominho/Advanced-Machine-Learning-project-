@@ -12,3 +12,4 @@ pyarrow
 xgboost 
 optuna 
 torch 
+yfinance
