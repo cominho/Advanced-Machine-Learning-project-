@@ -316,7 +316,7 @@ def evaluate_params(args):
     
     
     
-    series_cumulative_pnl = bt.calculate_cumulative_pnl_v2(
+    series_cumulative_pnl = bt.calculate_cumulative_pnl_v1(
         active_universe = products,
         date_to_products_signal=date_to_product_signal,
         date_to_product_prices=date_to_product_prices,
